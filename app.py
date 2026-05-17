@@ -3,6 +3,7 @@ import json
 import pandas as pd
 import csv
 import re
+import urllib.parse
 from collections import defaultdict
 
 # Page config
@@ -86,6 +87,25 @@ if 'selected_chars' not in st.session_state:
             st.session_state['selected_chars'] = set()
     else:
         st.session_state['selected_chars'] = set()
+else:
+    # Sync with query parameters if they changed (e.g. from clicking a delete link)
+    if "chars" in st.query_params:
+        try:
+            url_chars = set(c for c in st.query_params["chars"].split(",") if c in char_map)
+            if url_chars != st.session_state['selected_chars']:
+                st.session_state['selected_chars'] = url_chars
+                # Reset all checkbox states so they get re-evaluated correctly
+                for key in list(st.session_state.keys()):
+                    if key.startswith("cb_"):
+                        st.session_state[key] = False
+        except Exception:
+            pass
+    elif st.session_state['selected_chars'] and "chars" not in st.query_params:
+        # If query parameters are completely cleared, reset selection
+        st.session_state['selected_chars'] = set()
+        for key in list(st.session_state.keys()):
+            if key.startswith("cb_"):
+                st.session_state[key] = False
 
 # Master sync function
 def sync_all_checkboxes(name, new_status):
@@ -158,6 +178,25 @@ st.markdown("""
     .stTabs [aria-selected="true"] {
         background-color: rgba(0, 198, 255, 0.1);
         color: #00c6ff !important;
+    }
+    
+    /* SLEEK COMPACT RED DELETE BUTTONS */
+    div[data-testid="column"] button {
+        padding: 4px 10px !important;
+        font-size: 0.9rem !important;
+        height: auto !important;
+        min-height: unset !important;
+        background-color: rgba(255, 75, 75, 0.1) !important;
+        color: #ff4b4b !important;
+        border: 1px solid rgba(255, 75, 75, 0.2) !important;
+        border-radius: 6px !important;
+        transition: all 0.2s ease !important;
+    }
+    div[data-testid="column"] button:hover {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border-color: #ff4b4b !important;
+        box-shadow: 0 0 8px rgba(255, 75, 75, 0.4) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -306,19 +345,28 @@ with col_r:
 with col_l:
     if selected_names:
         st.markdown("### Squad Composition")
-        rows_html = ""
+        
+        # Header Row
+        col_char, col_rank, col_cats, col_tot, col_act = st.columns([2.5, 1.5, 4.5, 1.2, 1.2])
+        col_char.markdown("**Character**")
+        col_rank.markdown("**Rank**")
+        col_cats.markdown("**Categories**")
+        col_tot.markdown("**Total**")
+        col_act.markdown("<div style='text-align: center; font-weight: bold;'>Action</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin: 4px 0 12px 0; border-color: rgba(255,255,255,0.15);'>", unsafe_allow_html=True)
+        
         for name in selected_names:
             data = char_map[name]
             is_active_char = any(cat in active_cats for cat in data['categories'].keys())
             
             if is_active_char:
-                row_bg = "rgba(255, 255, 255, 0.05)"
                 text_color = "#ffffff"
+                weight_style = "font-weight: 700;"
                 cat_active_style = "color: #00d2ff; font-weight: 800; text-shadow: 0 0 10px rgba(0, 210, 255, 0.4);"
                 cat_inactive_style = "opacity: 0.4; font-weight: 300;"
             else:
-                row_bg = "rgba(211, 211, 211, 0.85)"
-                text_color = "#000000"
+                text_color = "#cccccc"
+                weight_style = "font-weight: 400; opacity: 0.7;"
                 cat_active_style = "color: #0055aa; font-weight: 800;"
                 cat_inactive_style = "color: #555555; font-weight: 400;"
 
@@ -329,32 +377,18 @@ with col_l:
                 else:
                     cat_items.append(f'<span style="{cat_inactive_style}">{cat}</span>')
             cats_html = ", ".join(cat_items)
-
-            rows_html += f"""<tr style="background: {row_bg}; color: {text_color}; border-bottom: 1px solid rgba(255,255,255,0.05);">
-    <td style="padding: 12px; font-weight: 700;">{name}</td>
-    <td style="padding: 12px;">⭐ {data['rank']}</td>
-    <td style="padding: 12px;">{cats_html}</td>
-    <td style="padding: 12px; font-weight: 700;">{sum(data['categories'].values())}</td>
-    </tr>"""
-        
-        html_table = f"""
-    <div style="overflow-x: auto;">
-    <table style="width:100%; border-collapse: collapse; color: white; background: rgba(0,0,0,0.2); border-radius: 10px; overflow: hidden;">
-    <thead>
-    <tr style="background: rgba(0, 198, 255, 0.15); border-bottom: 2px solid rgba(0, 198, 255, 0.3);">
-    <th style="padding: 12px; text-align: left;">Character</th>
-    <th style="padding: 12px; text-align: left;">Rank</th>
-    <th style="padding: 12px; text-align: left;">Categories</th>
-    <th style="padding: 12px; text-align: left;">Total</th>
-    </tr>
-    </thead>
-    <tbody>
-    {rows_html}
-    </tbody>
-    </table>
-    </div>
-    """
-        st.markdown(html_table, unsafe_allow_html=True)
+            
+            # Align each row's cells perfectly with the header
+            col_char, col_rank, col_cats, col_tot, col_act = st.columns([2.5, 1.5, 4.5, 1.2, 1.2])
+            col_char.markdown(f"<div style='color: {text_color}; {weight_style}; padding-top: 8px;'>{name}</div>", unsafe_allow_html=True)
+            col_rank.markdown(f"<div style='color: {text_color}; padding-top: 8px;'>⭐ {data['rank']}</div>", unsafe_allow_html=True)
+            col_cats.markdown(f"<div style='color: {text_color}; padding-top: 8px;'>{cats_html}</div>", unsafe_allow_html=True)
+            col_tot.markdown(f"<div style='color: {text_color}; font-weight: 700; padding-top: 8px;'>{sum(data['categories'].values())}</div>", unsafe_allow_html=True)
+            with col_act:
+                # Native button - completely reload-free using callback to respect widget lifecycle!
+                st.button("🗑️", key=f"del_{name}", help=f"Remove {name}", on_click=sync_all_checkboxes, args=(name, False))
+            
+            st.markdown("<hr style='margin: 6px 0; border-color: rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
 
 
 with col_r:
